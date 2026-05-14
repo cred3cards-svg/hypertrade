@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  distDir: ".next-live"
+  distDir: process.env.VERCEL ? ".next" : ".next-live"
 };
 
 export default nextConfig;
