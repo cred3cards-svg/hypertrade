@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  MARKET
+  LIMIT
+}
+
+enum OrderStatus {
+  DRAFT
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  FILLED
+  PARTIALLY_FILLED
+}
+
+enum AuditSeverity {
+  INFO
+  WARNING
+  ERROR
+}
+
+model User {
+  id                     String                  @id @default(cuid())
+  displayName            String?
+  email                  String?                 @unique
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  wallets                Wallet[]
+  tradingAccounts        TradingAccount[]
+  orderIntents           OrderIntent[]
+  tradeLogs              TradeLog[]
+  positionSnapshots      PositionSnapshot[]
+  riskAcknowledgements   RiskAcknowledgement[]
+  auditLogs              AuditLog[]
+}
+
+model Wallet {
+  id          String   @id @default(cuid())
+  userId      String
+  address     String
+  chainId     Int?
+  label       String?
+  isPrimary   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, address])
+  @@index([address])
+}
+
+model TradingAccount {
+  id                    String   @id @default(cuid())
+  userId                String
+  walletAddress         String
+  hyperliquidAddress    String
+  environment           String   @default("testnet")
+  agentWalletAddress    String?
+  accountStatus         String   @default("UNKNOWN")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([walletAddress, environment])
+}
+
+model Market {
+  id                    String             @id @default(cuid())
+  symbol                String             @unique
+  displayName           String
+  baseAsset             String
+  quoteAsset            String             @default("USDC")
+  hyperliquidAssetId    Int?
+  isHip3                Boolean            @default(true)
+  oracleDescription     String
+  maxLeverage           Int
+  minOrderSize          Decimal            @db.Decimal(30, 12)
+  tickSize              Decimal            @db.Decimal(30, 12)
+  szDecimals            Int
+  enabled               Boolean            @default(false)
+  testnetOnly           Boolean            @default(true)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  orderIntents          OrderIntent[]
+  tradeLogs             TradeLog[]
+  positionSnapshots     PositionSnapshot[]
+
+  @@index([enabled, testnetOnly])
+}
+
+model OrderIntent {
+  id                    String       @id @default(cuid())
+  userId                String
+  walletAddress         String
+  marketId              String
+  hyperliquidAssetId    Int?
+  side                  OrderSide
+  orderType             OrderType
+  quantity              Decimal      @db.Decimal(30, 12)
+  limitPrice            Decimal?     @db.Decimal(30, 12)
+  reduceOnly            Boolean      @default(false)
+  leverage              Int
+  slippageBps           Int
+  status                OrderStatus  @default(DRAFT)
+  hyperliquidOrderId    String?
+  clientOrderId         String?
+  errorMessage          String?
+  rawRequestJson        Json?
+  rawResponseJson       Json?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  market                Market       @relation(fields: [marketId], references: [id])
+
+  @@index([walletAddress, status])
+  @@index([marketId, createdAt])
+}
+
+model TradeLog {
+  id                    String   @id @default(cuid())
+  userId                String
+  walletAddress         String
+  marketId              String
+  hyperliquidTradeId    String?
+  side                  OrderSide
+  quantity              Decimal  @db.Decimal(30, 12)
+  price                 Decimal  @db.Decimal(30, 12)
+  fee                   Decimal? @db.Decimal(30, 12)
+  rawJson               Json?
+  createdAt             DateTime @default(now())
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  market                Market   @relation(fields: [marketId], references: [id])
+
+  @@index([walletAddress, createdAt])
+}
+
+model PositionSnapshot {
+  id                    String   @id @default(cuid())
+  userId                String
+  walletAddress         String
+  marketId              String
+  size                  Decimal  @db.Decimal(30, 12)
+  entryPrice            Decimal? @db.Decimal(30, 12)
+  markPrice             Decimal? @db.Decimal(30, 12)
+  liquidationPrice      Decimal? @db.Decimal(30, 12)
+  unrealizedPnl         Decimal? @db.Decimal(30, 12)
+  marginUsed            Decimal? @db.Decimal(30, 12)
+  rawJson               Json?
+  createdAt             DateTime @default(now())
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  market                Market   @relation(fields: [marketId], references: [id])
+
+  @@index([walletAddress, createdAt])
+}
+
+model RiskAcknowledgement {
+  id                    String   @id @default(cuid())
+  userId                String
+  walletAddress         String?
+  version               String
+  acknowledgedAt        DateTime @default(now())
+  ipAddress             String?
+  userAgent             String?
+  restrictedJurisdictionConfirmed Boolean @default(false)
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([walletAddress])
+}
+
+model AppSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AuditLog {
+  id          String        @id @default(cuid())
+  userId      String?
+  walletAddress String?
+  action      String
+  severity    AuditSeverity @default(INFO)
+  metadata    Json?
+  createdAt   DateTime      @default(now())
+  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([walletAddress, createdAt])
+  @@index([action, createdAt])
+}
